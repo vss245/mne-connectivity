@@ -477,8 +477,7 @@ def _compute_csd(
             n_signals = len(sig_idx)
 
             # gets seed-target indices for CSD
-            idx_map = [np.repeat(sig_idx, len(sig_idx)),
-                       np.tile(sig_idx, len(sig_idx))]
+            idx_map = np.triu_indices(len(sig_idx))
 
             # create instances of the connectivity estimators
             con_methods = []
