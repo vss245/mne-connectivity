@@ -392,10 +392,10 @@ def _sort_inputs(
                 perform_svd = True
             elif isinstance(n_comps, str):
                 if n_comps != "rank":
-            raise ValueError(
-                        "The entries of n_seed_components can only be None, an "
-                        "int, or a string with value 'rank'."
-            )
+                    raise ValueError(
+                                "The entries of n_seed_components can only be None, an "
+                                "int, or a string with value 'rank'."
+                    )
                 else:
                     n_seed_components[index_i] = np.linalg.matrix_rank(
                         timeseries_data[chs, :]
