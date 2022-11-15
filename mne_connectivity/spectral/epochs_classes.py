@@ -63,10 +63,10 @@ class _EpochMeanMultivarConEstBase(_AbstractConEstBase):
         self.n_times = n_times
 
         if n_times == 0:
-            self.csd_shape = (n_signals**2, n_freqs)
+            self.csd_shape = (n_signals * (n_signals + 1) // 2, n_freqs)
             self.con_scores = np.zeros((n_cons, n_freqs, 1))
         else:
-            self.csd_shape = (n_signals**2, n_freqs, n_times)
+            self.csd_shape = (n_signals * (n_signals + 1) // 2, n_freqs, n_times)
             self.con_scores = np.zeros((n_cons, n_freqs, n_times))
         
         # allocate space for accumulation of CSD
@@ -87,14 +87,17 @@ class _EpochMeanMultivarConEstBase(_AbstractConEstBase):
     def reshape_csd(self):
         """Reshapes CSD into a matrix of times x freqs x signals x signals."""
         if self.n_times == 0:
-            return (
-                np.reshape(self._acc, (self.n_signals, self.n_signals,
-                self.n_freqs, 1)).transpose(3, 2, 0, 1)
-            )
-        return (
-            np.reshape(self._acc, (self.n_signals, self.n_signals, self.n_freqs,
-            self.n_times)).transpose(3, 2, 0, 1)
-        )
+            n_times = 1
+            data = np.expand_dims(self._acc, axis=2)
+        else:
+            n_times = self.n_times
+            data = self._acc
+        csd = np.zeros((self.n_signals, self.n_signals, self.n_freqs, n_times), dtype=np.complex128)
+        csd[np.triu_indices(self.n_signals)] = data
+        csd += np.rollaxis(csd, axis=1).conj()
+        csd[np.diag_indices(self.n_signals)] /= 2
+
+        return csd.transpose(3, 2, 0, 1)
 
     def reshape_con_scores(self):
         """Removes the time dimension from con. scores, if necessary."""
