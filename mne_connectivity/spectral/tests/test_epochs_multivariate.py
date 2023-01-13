@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 from mne.filter import filter_data
 from mne_connectivity import (MultivariateSpectralConnectivity,
-                              multivariate_spectral_connectivity_epochs)
+                              multivariate_spectral_connectivity_epochs,
+                              read_connectivity)
 from numpy.testing import assert_array_almost_equal, assert_array_less
 
 
@@ -73,12 +74,12 @@ class TestMultivarSpectralConnectivity:
     sfreq = 50.
     n_signals = 4
     n_epochs = 8
-    n_times = 256
+    n_times = 200
     trans_bandwidth = 2.
     tmin = 0.
     tmax = (n_times - 1) / sfreq
     fstart = 5.0
-    fend = 15.0
+    fend = 10.0
     test_data, test_times = create_test_dataset_multivariate(
                 sfreq, n_signals=n_signals, n_epochs=n_epochs, 
                 n_times=n_times, tmin=tmin, tmax=tmax, 
@@ -315,7 +316,7 @@ class TestMultivarSpectralConnectivity:
     @pytest.mark.parametrize('mode', ['multitaper', 'fourier', 'cwt_morlet'])
     def test_methods_and_modes(self, method, mode):
         # define some frequencies for cwt
-        cwt_freqs = np.arange(3, 24.5, 1)
+        cwt_freqs = np.arange(3, 14.5, 1)
         if method == 'mic' and mode == 'cwt_morlet':
             # so we also test using an array for num cycles
             cwt_n_cycles = 7 * np.ones(len(cwt_freqs))
@@ -326,7 +327,7 @@ class TestMultivarSpectralConnectivity:
         con = multivariate_spectral_connectivity_epochs(
             self.test_data, indices=indices, method=method, mode=mode,
             sfreq=self.sfreq, cwt_freqs=cwt_freqs,
-            cwt_n_cycles=cwt_n_cycles
+            cwt_n_cycles=cwt_n_cycles, gc_n_lags=5
             )
 
         if not isinstance(method, list):
@@ -467,14 +468,46 @@ class TestMultivarSpectralConnectivity:
         raises errors, and that performing SVD to make the data full rank
         alleviates this."""
         # create non-full-rank data (e.g. repeat a seed or target channel)
+        data = np.copy(self.test_data)
+        data[:, 2, :] = data[:, 0, :] * 2
+        rank_orig = np.linalg.matrix_rank(self.test_data)
+        rank = np.linalg.matrix_rank(data)
+        # Check our data truly doesn't have full rank
+        assert np.all(rank_orig - rank == 1)
 
-        # compute GC on this and catch the resulting value error
+        with pytest.raises(np.linalg.LinAlgError, match="Singular matrix"):
+            multivariate_spectral_connectivity_epochs(
+                data, indices=([[0,2]], [[1,3]]), method="gc", 
+                sfreq=self.sfreq, fmin=3, fmax=20,
+                )
 
-        # do the same thing, but with n_components == 'rank' and have it succeed
+        con = multivariate_spectral_connectivity_epochs(
+            data, indices=([[0,2]], [[1,3]]), method="gc", sfreq=self.sfreq,
+            fmin=3, fmax=20,
+            n_seed_components=["rank"], n_target_components=["rank"]
+            )
+        assert con.n_components == ([1], [2])
+
+        con = multivariate_spectral_connectivity_epochs(
+            data, indices=([[0,2]], [[1,3]]), method="mic", sfreq=self.sfreq,
+            )
 
         # do the same for MIC/MIM (but use mode='cwt_morlet'), since
         # non-full-rank data only seems to be a problem here (i.e. do not SVD
         # and catch the error, then do it with SVD and have it succeed)
+        freqs = np.arange(5, 10)
+        con = multivariate_spectral_connectivity_epochs(
+                self.test_data, indices=([[0, 2]], [[1, 3]]),
+                mode='cwt_morlet', cwt_freqs=freqs, sfreq=self.sfreq,
+            )
+
+        con = multivariate_spectral_connectivity_epochs(
+            data, indices=([[0,2]], [[1,3]]), method="mic",
+            mode='cwt_morlet', cwt_freqs=freqs, sfreq=self.sfreq,
+            n_seed_components=["rank"], n_target_components=["rank"]
+            )
+        assert con.n_components == ([1], [2])
+
 
     # Could add checks that results of method calls separately match those given
     # together
