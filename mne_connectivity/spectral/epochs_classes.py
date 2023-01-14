@@ -195,7 +195,6 @@ class _MultivarCohEstBase(_EpochMeanMultivarConEstBase):
 
         self.mic_scores = copy.deepcopy(self.con_scores)
         self.mim_scores = copy.deepcopy(self.con_scores)
-        self.topographies = np.empty((2, n_cons), dtype=object)
 
     def compute_con(
         self, seeds, targets, n_seed_components, n_target_components, n_epochs,
@@ -256,6 +255,9 @@ class _MultivarCohEstBase(_EpochMeanMultivarConEstBase):
             self.compute_mic = True
         else: # only MIM left
             self.compute_mim = True
+        
+        if self.compute_mic:
+            self.topographies = np.empty((2, self.n_cons), dtype=object)
 
     def _cross_spectra_svd(
         self, csd, n_seeds, n_seed_components, n_target_components

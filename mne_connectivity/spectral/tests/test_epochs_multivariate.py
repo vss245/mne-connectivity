@@ -3,9 +3,10 @@ import mne
 import numpy as np
 import pytest
 from mne.filter import filter_data
-from mne_connectivity import (MultivariateSpectralConnectivity,
-                              multivariate_spectral_connectivity_epochs,
-                              read_connectivity)
+from mne_connectivity import (
+    MultivariateSpectralConnectivity, multivariate_spectral_connectivity_epochs,
+    read_connectivity
+)
 from numpy.testing import assert_array_almost_equal, assert_array_less
 
 
@@ -87,6 +88,7 @@ class TestMultivarSpectralConnectivity:
                 trans_bandwidth=trans_bandwidth, shift=None
                 )
 
+
     def test_invalid_method_or_mode(self):      
         class _InvalidClass:
             pass
@@ -114,6 +116,7 @@ class TestMultivarSpectralConnectivity:
             multivariate_spectral_connectivity_epochs(
                 self.test_data, indices=([[0,2]], [[1,3]]), mode='notamode'
                 )
+
 
     def test_invalid_fmin_or_fmax(self):
 
@@ -145,6 +148,7 @@ class TestMultivarSpectralConnectivity:
                 self.test_data, indices=([[0,2]], [[1,3]]), fmin=(11,), 
                 fmax=(12, 15)
                 )
+
 
     def test_invalid_indices(self):
         # Indices cannot be None
@@ -184,11 +188,13 @@ class TestMultivarSpectralConnectivity:
                 self.test_data, indices=([[0,2]], [[0,3]])
             )
         
+
     def test_compute_separate_gc_csd_and_connectivity(self):
         multivariate_spectral_connectivity_epochs(
             self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
             n_seed_components=["rank"], method="gc"
             )
+
 
     def test_n_seed_or_target_components(self):
         # Add check that n_components cannot be <= 0
@@ -223,6 +229,7 @@ class TestMultivarSpectralConnectivity:
         # Could add a test that when data is given with a certain rank, that
         # giving ['rank'] as an input for n_components, the correct number of
         # components are taken and stored in the returned connectivity object
+
 
         # Check too many seed components
         with pytest.raises(ValueError, 
@@ -295,6 +302,7 @@ class TestMultivarSpectralConnectivity:
                 self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
                 n_seed_components=[2], n_target_components=[2.0]
                 )
+
 
     @pytest.mark.parametrize('mt_adaptive', [True, False])
     @pytest.mark.parametrize('mt_low_bias', [True, False])
@@ -418,11 +426,13 @@ class TestMultivarSpectralConnectivity:
                 assert np.all(con.get_data('raveled')[0, gidx[0]:gidx[1]] > upper_t), \
                     con.get_data()[0, gidx[0]:gidx[1]].min()
 
+
     def test_multiple_methods_with_svd(self):
         multivariate_spectral_connectivity_epochs(
             self.test_data, indices=([[0, 2]], [[1, 3]]),
             method=['gc', 'mic'], sfreq=self.sfreq, n_seed_components=["rank"]
         )
+
 
     def test_invalid_n_lags(self):
         """Tests whether an invalid number of lags for GC is caught.
@@ -436,6 +446,7 @@ class TestMultivarSpectralConnectivity:
                 gc_n_lags=len(freqs) * 2
             )
     
+
     def test_net_gc_mirrored(self):
         """Tests that net GC and net TRGC from [seeds -> targets] equals net GC
         and net TRGC, respectively, from [targets -> seeds]*-1 (i.e. they are
@@ -463,6 +474,7 @@ class TestMultivarSpectralConnectivity:
             targets_seeds[1].get_data() * -1
         )
     
+
     def test_non_full_rank_catch(self):
         """Tests that computing multivariate connectivity on non-full-rank data
         raises errors, and that performing SVD to make the data full rank
@@ -512,6 +524,7 @@ class TestMultivarSpectralConnectivity:
     # Could add checks that results of method calls separately match those given
     # together
 
+
     def test_parallel(self):
         """Test parallel computation."""
         n_jobs = 2
@@ -519,6 +532,7 @@ class TestMultivarSpectralConnectivity:
             self.test_data, indices=([[0]], [[1]]), sfreq=self.sfreq, 
             n_jobs=n_jobs
             )
+
 
     def test_epochs_object(self):
         info = mne.create_info(
@@ -580,6 +594,7 @@ class TestMultivarSpectralConnectivity:
             method="gc", gc_n_lags=4
             )
 
+
     def test_faverage(self):
         multivariate_spectral_connectivity_epochs(
             self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
@@ -594,6 +609,7 @@ class TestMultivarSpectralConnectivity:
         # Add checks that performing faverage in function call matches manual
         # result, and that same is seen for MIC topographies
 
+
     def test_check_for_discontinuous_freqs(self):
         # cwt_freqs is a discontinuous array
         multivariate_spectral_connectivity_epochs(
@@ -601,8 +617,32 @@ class TestMultivarSpectralConnectivity:
             fmin=(3, 9), fmax=(7, 14), method="gc", gc_n_lags=4
             )
 
-    # Add checks that saving works (given indices and topographies can be
-    # ragged, which needs to be handled carefully when saving); likewise, could
-    # also check that re-loaded results match saved results after hacky
-    # intervation for saving ragged arrays - SHOULD THIS GO IN A SEPARATE PLACE
-    # FOR TESTING THE NEW CLASSES SPECIFICALLY?
+    def test_save(self, tmp_path):
+        """Tests that saving the connectivity objects works and re-loading the
+        objects gives the correct results.
+        
+        This is necessary given the need to pad ragged indices and topographies
+        attributes, which would otherwise be converted to object arrays, and
+        which the saving engine used by MNE does not support.
+        """
+        tmp_file = tmp_path / 'temp_file.nc'
+        # generate 'ragged' connectivity stored in a
+        # MultivariateSpectralConnectivity object
+        con = multivariate_spectral_connectivity_epochs(
+            self.test_data, indices=([[0]], [[1, 3]]), sfreq=self.sfreq
+        )
+        con.save(tmp_file)
+        read_con = read_connectivity(tmp_file)
+        assert_array_almost_equal(con.get_data(), read_con.get_data())
+        assert repr(con) == repr(read_con)
+
+        # generate 'ragged' connectivity stored in a
+        # MultivariateSpectroTemporalConnectivity object
+        con = multivariate_spectral_connectivity_epochs(
+            self.test_data, indices=([[0]], [[1, 3]]), mode='cwt_morlet',
+            cwt_freqs=np.arange(self.fstart, self.fend), sfreq=self.sfreq
+        )
+        con.save(tmp_file)
+        read_con = read_connectivity(tmp_file)
+        assert_array_almost_equal(con.get_data(), read_con.get_data())
+        assert repr(con) == repr(read_con)
