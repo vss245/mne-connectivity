@@ -572,7 +572,7 @@ class _GCEstBase(_EpochMeanMultivarConEstBase):
             np.linalg.cholesky(V)
         except np.linalg.linalg.LinAlgError as np_error:
             raise ValueError(
-                'the residuals covariance matrix is not positive-definite;  '
+                'the residuals covariance matrix is not positive-definite; '
                 'make sure you are using only full rank data, or specify an '
                 'appropriate number of components for the seeds and targets '
                 'that is less than or equal to their ranks'
