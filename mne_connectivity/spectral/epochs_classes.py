@@ -315,12 +315,13 @@ class _MultivarCohEstBase(_EpochMeanMultivarConEstBase):
             )
         T = T.transpose(1, 0, 2, 3)
 
-        if not np.all(np.isreal(T)):
+        if not np.isreal(T).all() or not np.isfinite(T).all():
             raise ValueError(
-                'the transformation matrix of the data must be real-valued, '
-                'but it is not; check that you are using full-rank data or '
-                'specifying an appropriate number of components for the seeds '
-                'and targets that is less than or equal to their ranks'
+                'the transformation matrix of the data must be real-valued and '
+                'contain no NaN or infinity values; check that you are using '
+                'full rank data or specify an appropriate number of components '
+                'for the seeds and targets that is less than or equal to their '
+                'ranks'
             )
         T = np.real(T)
 
@@ -551,21 +552,30 @@ class _GCEstBase(_EpochMeanMultivarConEstBase):
 
         Ref.: Whittle P., 1963. Biometrika, DOI: 10.1093/biomet/50.1-2.129.
         """
+        if np.any(np.linalg.det(autocov) == 0):
+            raise ValueError(
+                'the autocovariance matrix is singular; make sure you are '
+                'using only full rank data, or specify an appropriate number '
+                'of components for the seeds and targets that is less than or '
+                'equal to their ranks'
+            )
+
         A_f, V = self.whittle_lwr_recursion(autocov)
 
         if not np.isfinite(A_f).all():
             raise ValueError(
-                "Some or all VAR model coefficients are infinite or NaNs. "
-                "Please check the data you are computing Granger causality on."
+                'some or all VAR model coefficients are infinite or NaNs; '
+                'please check the data you are computing connectivity on'
             )
 
         try:
             np.linalg.cholesky(V)
         except np.linalg.linalg.LinAlgError as np_error:
             raise ValueError(
-                "The residuals' covariance matrix is not positive-definite. "
-                "Make sure you are computing Granger causality only on data "
-                "that is full rank."
+                'the residuals covariance matrix is not positive-definite;  '
+                'make sure you are using only full rank data, or specify an '
+                'appropriate number of components for the seeds and targets '
+                'that is less than or equal to their ranks'
             ) from np_error
 
         return A_f, V

@@ -428,6 +428,8 @@ class TestMultivarSpectralConnectivity:
 
 
     def test_multiple_methods_with_svd(self):
+        """Tests that calling SVD does not raise any error when multiple methods
+        are called."""
         multivariate_spectral_connectivity_epochs(
             self.test_data, indices=([[0, 2]], [[1, 3]]),
             method=['gc', 'mic'], sfreq=self.sfreq, n_seed_components=["rank"]
@@ -476,48 +478,32 @@ class TestMultivarSpectralConnectivity:
     
 
     def test_non_full_rank_catch(self):
-        """Tests that computing multivariate connectivity on non-full-rank data
+        """Tests that computing multivariate connectivity on non-full rank data
         raises errors, and that performing SVD to make the data full rank
         alleviates this."""
         # create non-full-rank data (e.g. repeat a seed or target channel)
         data = np.copy(self.test_data)
         data[:, 2, :] = data[:, 0, :] * 2
-        rank_orig = np.linalg.matrix_rank(self.test_data)
-        rank = np.linalg.matrix_rank(data)
+        rank_orig = np.linalg.matrix_rank(self.test_data, tol=1e-10)
+        rank = np.linalg.matrix_rank(data, tol=1e-10)
         # Check our data truly doesn't have full rank
         assert np.all(rank_orig - rank == 1)
 
-        with pytest.raises(np.linalg.LinAlgError, match="Singular matrix"):
+        with pytest.raises(ValueError, match='the autocovariance matrix is'):
             multivariate_spectral_connectivity_epochs(
-                data, indices=([[0,2]], [[1,3]]), method="gc", 
-                sfreq=self.sfreq, fmin=3, fmax=20,
-                )
-
-        con = multivariate_spectral_connectivity_epochs(
-            data, indices=([[0,2]], [[1,3]]), method="gc", sfreq=self.sfreq,
-            fmin=3, fmax=20,
-            n_seed_components=["rank"], n_target_components=["rank"]
+                data, indices=([[0,2]], [[1,3]]), method='gc', sfreq=self.sfreq,
+                fmin=3, fmax=20,
             )
-        assert con.n_components == ([1], [2])
-
-        con = multivariate_spectral_connectivity_epochs(
-            data, indices=([[0,2]], [[1,3]]), method="mic", sfreq=self.sfreq,
-            )
-
-        # do the same for MIC/MIM (but use mode='cwt_morlet'), since
-        # non-full-rank data only seems to be a problem here (i.e. do not SVD
-        # and catch the error, then do it with SVD and have it succeed)
-        freqs = np.arange(5, 10)
-        con = multivariate_spectral_connectivity_epochs(
-                self.test_data, indices=([[0, 2]], [[1, 3]]),
-                mode='cwt_morlet', cwt_freqs=freqs, sfreq=self.sfreq,
+        
+        with pytest.raises(ValueError, match='the transformation matrix of'):
+            multivariate_spectral_connectivity_epochs(
+                data, indices=([[0,2]], [[1,3]]), method='mic', sfreq=self.sfreq
             )
 
         con = multivariate_spectral_connectivity_epochs(
-            data, indices=([[0,2]], [[1,3]]), method="mic",
-            mode='cwt_morlet', cwt_freqs=freqs, sfreq=self.sfreq,
-            n_seed_components=["rank"], n_target_components=["rank"]
-            )
+            data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
+            n_seed_components=['rank'], n_target_components=['rank']
+        )
         assert con.n_components == ([1], [2])
 
 
