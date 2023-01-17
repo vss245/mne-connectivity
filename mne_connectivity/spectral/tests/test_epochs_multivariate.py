@@ -192,116 +192,103 @@ class TestMultivarSpectralConnectivity:
     def test_compute_separate_gc_csd_and_connectivity(self):
         multivariate_spectral_connectivity_epochs(
             self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-            n_seed_components=["rank"], method="gc"
-            )
+            n_components="rank", method="gc"
+        )
 
 
-    def test_n_seed_or_target_components(self):
-        # Add check that n_components cannot be <= 0
-
+    def test_n_components(self):
+        """Tests that n_components cannot be of the wrong type and that there
+        cannot be too few or too many components requested."""
         # Check 1 seed, 1 target component
-        n_seed_components = [1]
-        n_target_components = [1]
+        n_components = ([1], [1])
         con = multivariate_spectral_connectivity_epochs(
             self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-            n_seed_components=n_seed_components,
-            n_target_components=n_target_components
+            n_components=n_components
             )
-        assert(con.n_components == (n_seed_components, n_target_components))
+        assert(con.n_components == n_components)
 
         # Check 2 seed, 2 target components
-        n_seed_components = [2]
-        n_target_components = [2]
+        n_components = ([2], [2])
         con = multivariate_spectral_connectivity_epochs(
             self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-            n_seed_components=n_seed_components,
-            n_target_components=n_target_components
+            n_components=n_components
             )
-        assert(con.n_components == (n_seed_components, n_target_components))
+        assert(con.n_components == n_components)
 
 
         # Check that string 'rank' works for n_components
         multivariate_spectral_connectivity_epochs(
             self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-            n_seed_components=["rank"], n_target_components=["rank"]
+            n_components='rank'
             )
-
-        # Could add a test that when data is given with a certain rank, that
-        # giving ['rank'] as an input for n_components, the correct number of
-        # components are taken and stored in the returned connectivity object
-
 
         # Check too many seed components
         with pytest.raises(ValueError, 
-            match='The number of components to take cannot '):
+            match='the number of components to take cannot '):
             multivariate_spectral_connectivity_epochs(
                 self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-                n_seed_components=[3], n_target_components=[2]
+                n_components=([3], [2])
                 )
 
         # Check too many target components
         with pytest.raises(ValueError, 
-            match='The number of components to take cannot '):
+            match='the number of components to take cannot '):
             multivariate_spectral_connectivity_epochs(
                 self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-                n_seed_components=[2], n_target_components=[3]
+                n_components=([2], [3])
                 )
 
         # Check n_components < 0
         with pytest.raises(ValueError, match='must be greater than 0'):
             multivariate_spectral_connectivity_epochs(
                 self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-                n_seed_components=[-1]
+                n_components=([-1], [1])
                 )
 
         # Check wrong length of n_seed_components
         with pytest.raises(ValueError,
-            match='n_seed_components and n_target_components must have the '):
+            match='entries of n_components must have the '):
             multivariate_spectral_connectivity_epochs(
                 self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-                n_seed_components=[2, 2], n_target_components=[2]
+                n_components=([2, 2], [2])
                 )
 
         # Check wrong length of n_target_components
         with pytest.raises(ValueError,
-            match='n_seed_components and n_target_components must have the '):
+            match='entries of n_components must have the '):
             multivariate_spectral_connectivity_epochs(
                 self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-                n_seed_components=[2], n_target_components=[2, 2]
+                n_components=([2], [2, 2])
                 )
 
-        # Check n_seed_components is not a list or None
-        with pytest.raises(TypeError,
-            match='n_seed_components and n_target_components must be lists'):
+        # Check n_components is a tuple
+        with pytest.raises(TypeError, match='n_components must be a tuple'):
             multivariate_spectral_connectivity_epochs(
                 self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-                n_seed_components=2, n_target_components=[2]
-                )
-        
-        # Check n_seed_components is not a tuple or None
+                n_components=[2, 2]
+            )
+
+        # Check n_components entries are lists
         with pytest.raises(TypeError,
-            match='n_seed_components and n_target_components must be lists'):
+            match='entries of n_components must be lists'):
             multivariate_spectral_connectivity_epochs(
                 self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-                n_seed_components=[2], n_target_components=2
+                n_components=(2, 2)
                 )
 
         # Check that invalid string raises error for n_components
         with pytest.raises(ValueError, match='must be the string "rank"'):
             multivariate_spectral_connectivity_epochs(
                 self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-                n_seed_components=[2], n_target_components=["invalid"]
-                )
+                n_components=(['rank'], ['invalid'])
+            )
 
-        # Check that invalid Type (e.g. float) raises error for n_components
-        with pytest.raises(
-            TypeError, 
-            match='must be lists of `None`, `int`, or the string "rank"'
-            ):
+        # Check that invalid type (e.g. float) raises error for n_components
+        with pytest.raises(TypeError, match='must be tuples of lists of '):
             multivariate_spectral_connectivity_epochs(
                 self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-                n_seed_components=[2], n_target_components=[2.0]
-                )
+                n_components=([2], [2.5])
+            )
 
 
     @pytest.mark.parametrize('mt_adaptive', [True, False])
@@ -390,7 +377,7 @@ class TestMultivarSpectralConnectivity:
                     freqs,
                     (self.fstart - self.trans_bandwidth * 2, 
                     self.fend + self.trans_bandwidth * 2)
-                    )
+                )
                 
                 # Check 0-lag, 2 signals
                 data, _ = create_test_dataset_multivariate(
@@ -402,12 +389,11 @@ class TestMultivarSpectralConnectivity:
                 con = multivariate_spectral_connectivity_epochs(
                     data, indices=([[0]], [[1]]), method=method, mode=mode, 
                     sfreq=self.sfreq, cwt_freqs=cwt_freqs,
-                    cwt_n_cycles=cwt_n_cycles, n_seed_components=None, 
-                    n_target_components=None
-                    )
+                    cwt_n_cycles=cwt_n_cycles, n_components=None
+                )
                 assert_array_less(
                     con.get_data(output='raveled')[ 0, :bidx[0]], lower_t
-                    )
+                )
 
                 # Check 1-lag, 4 signals
                 data, _ = create_test_dataset_multivariate(
@@ -420,9 +406,8 @@ class TestMultivarSpectralConnectivity:
                 con = multivariate_spectral_connectivity_epochs(
                     data, indices=([[0,2]], [[1,3]]), method=method, mode=mode, 
                     sfreq=self.sfreq, cwt_freqs=cwt_freqs, 
-                    cwt_n_cycles=cwt_n_cycles, n_seed_components=None, 
-                    n_target_components=None
-                    )
+                    cwt_n_cycles=cwt_n_cycles, n_components=None
+                )
                 assert np.all(con.get_data('raveled')[0, gidx[0]:gidx[1]] > upper_t), \
                     con.get_data()[0, gidx[0]:gidx[1]].min()
 
@@ -432,7 +417,7 @@ class TestMultivarSpectralConnectivity:
         are called."""
         multivariate_spectral_connectivity_epochs(
             self.test_data, indices=([[0, 2]], [[1, 3]]),
-            method=['gc', 'mic'], sfreq=self.sfreq, n_seed_components=["rank"]
+            method=['gc', 'mic'], sfreq=self.sfreq, n_components='rank'
         )
 
 
@@ -502,7 +487,7 @@ class TestMultivarSpectralConnectivity:
 
         con = multivariate_spectral_connectivity_epochs(
             data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
-            n_seed_components=['rank'], n_target_components=['rank']
+            n_components='rank'
         )
         assert con.n_components == ([1], [2])
 
@@ -562,23 +547,23 @@ class TestMultivarSpectralConnectivity:
         epochs.add_annotations_to_metadata()
         con_with_metadata = multivariate_spectral_connectivity_epochs(
             epochs, indices=([[0]], [[1]]), method="gc"
-            )
+        )
         assert_array_almost_equal(
             con_with_metadata.get_data(), 
             con_from_data.get_data()
-            )
+        )
 
         # Test SVD works with Epochs object and gc methods
         multivariate_spectral_connectivity_epochs(
-            epochs, indices=([[0,2]], [[1,3]]), n_seed_components=[1], 
-            n_target_components=[1], method="gc"
-            )
+            epochs, indices=([[0,2]], [[1,3]]), method="gc",
+            n_components=([1], [1])
+        )
 
         # cwt_freqs is a discontinuous array
         multivariate_spectral_connectivity_epochs(
             epochs, indices=([[0]], [[1]]), fmin=(3, 9), fmax=(7, 14), 
             method="gc", gc_n_lags=4
-            )
+        )
 
 
     def test_faverage(self):
@@ -632,3 +617,6 @@ class TestMultivarSpectralConnectivity:
         read_con = read_connectivity(tmp_file)
         assert_array_almost_equal(con.get_data(), read_con.get_data())
         assert repr(con) == repr(read_con)
+
+test = TestMultivarSpectralConnectivity
+test.test_n_components(test)
