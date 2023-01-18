@@ -1125,6 +1125,8 @@ class BaseMultivariateConnectivity(BaseConnectivity):
         # useful for converting back to a tuple when re-loading after saving
         if isinstance(n_components, np.ndarray):
             n_components = tuple(copy(n_components.tolist()))
+        elif isinstance(n_components, list):
+            n_components = tuple(copy(n_components))
 
         if not isinstance(n_components, tuple):
             raise TypeError('n_components should be a tuple')
