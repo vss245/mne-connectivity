@@ -288,6 +288,16 @@ class _MVCSpectralEpochs():
                     'for a single connection, however multivariate '
                     'connectivity between shared channels is not supported'
                 )
+        
+        if isinstance(self.data, BaseEpochs):
+            n_channels = self.data.get_data().shape[1]
+        else:
+            n_channels = self.data.shape[1]
+        if len(self._get_unique_signals(self.indices)) > n_channels:
+            raise ValueError(
+                'the number of unique signals in indices is greater than the '
+                'number of channels in the data'
+            )
 
     def _sort_svd_inputs(self):
         """Checks that the SVD parameters are appropriate and finds the correct
