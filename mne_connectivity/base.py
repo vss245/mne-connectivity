@@ -1123,8 +1123,8 @@ class BaseMultivariateConnectivity(BaseConnectivity):
     def _check_n_components_consistency(self, n_components):
         """Perform n_components input checks."""
         # useful for converting back to a tuple when re-loading after saving
-        if isinstance(n_components, list):
-            n_components = tuple(copy(n_components))
+        if isinstance(n_components, np.ndarray):
+            n_components = tuple(copy(n_components.tolist()))
 
         if not isinstance(n_components, tuple):
             raise TypeError('n_components should be a tuple')
@@ -1243,7 +1243,7 @@ class BaseMultivariateConnectivity(BaseConnectivity):
                 if con is None:
                     n_components[group_i].append('n/a')
                 else:
-                    n_components[group_i].apend(con)
+                    n_components[group_i].append(con)
         self.attrs['n_components'] = tuple(n_components)
 
     def _restore_attrs(self):
@@ -1311,7 +1311,7 @@ class BaseMultivariateConnectivity(BaseConnectivity):
                 if con == 'n/a':
                     n_components[group_i].append(None)
                 else:
-                    n_components[group_i].apend(con)
+                    n_components[group_i].append(con)
         self.attrs['n_components'] = tuple(n_components)
 
 
