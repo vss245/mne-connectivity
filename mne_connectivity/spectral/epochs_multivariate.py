@@ -68,7 +68,7 @@ class _MVCSpectralEpochs():
     }
 
     # threshold for classifying singular values as being non-zero
-    rank_nonzero_tol = 1e-10
+    rank_nonzero_tol = 1e-5
     perform_svd = False
 
     # whether the requested frequencies are discontinuous (e.g. different bands)
@@ -304,9 +304,10 @@ class _MVCSpectralEpochs():
         dimensionality reduction settings to use, if applicable.
         
         This involves the rank of the data being computed based its non-zero
-        singular values. We use a cut-off of 1e-10 by default to determine when
-        a value is non-zero, as using numpy's default cut-off is too liberal
-        (i.e. low) for our purposes where we need to be stricter.
+        singular values. We use a cut-off of the largest singular value * 1e-5
+        by default to determine when a value is non-zero, as using numpy's
+        default cut-off is too liberal (i.e. low) for our purposes where we need
+        to be stricter.
         """
         self.n_components = copy.copy(self.n_components)
 
@@ -374,12 +375,13 @@ class _MVCSpectralEpochs():
                                     'as a string, it must be the string "rank"'
                                 )
                             # compute the rank of the seeds/targets for a con
-                            group_comps[index_i] = np.min(
-                                np.linalg.matrix_rank(
-                                    epochs[:, con_chs, :],
-                                    tol=self.rank_nonzero_tol
-                                )
+                            S = np.linalg.svd(
+                                epochs[:, con_chs, :],
+                                compute_uv=False
                             )
+                            group_comps[index_i] = min([np.count_nonzero(
+                                    s >= s[0]*self.rank_nonzero_tol
+                            ) for s in S])
                         elif con_comps is not None:
                             raise TypeError(
                                 'n_components must be tuples of lists of '
