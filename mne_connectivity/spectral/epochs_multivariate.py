@@ -447,12 +447,7 @@ class _MVCSpectralEpochs():
             this_con, _, = self._compute_connectivity(con_methods, new_indices)
 
             for method_i in range(n_gc_methods):
-                self.separate_gc_con[method_i].append(this_con[method_i])
-
-        self.separate_gc_con = [
-            np.squeeze(np.array(this_con), 1) for this_con in
-            self.separate_gc_con
-        ]
+                self.separate_gc_con[method_i].extend(this_con[method_i])
 
         # finds the methods still needing to be computed
         self.remaining_method_types = [
@@ -581,7 +576,7 @@ class _MVCSpectralEpochs():
         ) = _prepare_connectivity(
             epoch_block=self.epoch_blocks[0], times_in=self.times_in,
             tmin=self.tmin, tmax=self.tmax, fmin=fmin, fmax=fmax,
-            sfreq=self.sfreq, indices=self.indices, mode=self.mode,
+            sfreq=self.sfreq, indices=indices, mode=self.mode,
             fskip=self.fskip, n_bands=self.n_bands, cwt_freqs=self.cwt_freqs,
             faverage=self.faverage
         )
@@ -600,7 +595,7 @@ class _MVCSpectralEpochs():
 
         self._sort_con_indices(indices)
 
-        con_methods = self._instantiate_con_estimators(con_method_types)
+        con_methods = self._instantiate_con_estimators(con_method_types, indices)
 
         self.csd_call_params = dict(
             sig_idx=self.sig_idx, tmin_idx=tmin_idx, tmax_idx=tmax_idx,
@@ -685,7 +680,7 @@ class _MVCSpectralEpochs():
         """Find the unique signals in a set of indices."""
         return np.unique(sum(sum(indices, []), []))
 
-    def _instantiate_con_estimators(self, con_method_types):
+    def _instantiate_con_estimators(self, con_method_types, indices):
         """Create instances of the connectivity estimators and log the methods
         being computed."""
         con_methods = []
@@ -694,7 +689,7 @@ class _MVCSpectralEpochs():
                 # if a GC method, provide n_lags argument
                 con_methods.append(
                     mtype(
-                        self.use_n_signals, self.n_cons, self.n_freqs,
+                        self.use_n_signals, len(indices[0]), self.n_freqs,
                         self.n_times_spectrum, self.gc_n_lags, self.n_jobs
                     )
                 )
@@ -702,7 +697,7 @@ class _MVCSpectralEpochs():
                 # if a coherence method, do not provide n_lags argument
                 con_methods.append(
                     mtype(
-                        self.use_n_signals, self.n_cons, self.n_freqs,
+                        self.use_n_signals, len(indices[0]), self.n_freqs,
                         self.n_times_spectrum, self.n_jobs
                     )
                 )
@@ -732,7 +727,7 @@ class _MVCSpectralEpochs():
             )
 
             self._check_correct_results_dimensions(
-                con_methods, method_con, method_topo
+                con_methods, method_con, method_topo, indices
             )
 
             if self.faverage:
@@ -919,12 +914,13 @@ class _MVCSpectralEpochs():
                 self.compute_coh_form[form_name] = form_info
                 break # only one form is possible at any one instance
 
-    def _check_correct_results_dimensions(self, con_methods, con, topo):
+    def _check_correct_results_dimensions(self, con_methods, con, topo, indices):
         """Checks that the results of the connectivity computations have the
         appropriate dimensions."""
+        n_cons = len(indices[0])
         n_times = con_methods[0].n_times
 
-        assert (con.shape[0] == self.n_cons), (
+        assert (con.shape[0] == n_cons), (
             'The first dimension of connectivity scores does not match the '
             'number of connections. Please contact the mne-connectivity ' 
             'developers.'
@@ -944,13 +940,13 @@ class _MVCSpectralEpochs():
             )
         
         if topo is not None:
-            assert (topo[0].shape[0] == self.n_cons and topo[1].shape[0]), (
+            assert (topo[0].shape[0] == n_cons and topo[1].shape[0]), (
                 'The first dimension of topographies does not match the number '
                 'of connections. Please contact the mne-connectivity '
                 'developers.'
             )
 
-            for con_i in range(self.n_cons):
+            for con_i in range(n_cons):
                 assert (
                     topo[0][con_i].shape[1] == self.n_freqs and
                     topo[1][con_i].shape[1] == self.n_freqs
@@ -972,7 +968,8 @@ class _MVCSpectralEpochs():
 
     def _compute_faverage(self, con, topo):
         """Computes the average connectivity across the frequency bands."""
-        con_shape = (self.n_cons, self.n_bands) + con.shape[2:]
+        n_cons = con.shape[0]
+        con_shape = (n_cons, self.n_bands) + con.shape[2:]
         con_bands = np.empty(con_shape, dtype=con.dtype)
         for band_idx in range(self.n_bands):
             con_bands[:, band_idx] = np.mean(
@@ -980,9 +977,9 @@ class _MVCSpectralEpochs():
             )
 
         if topo is not None:
-            topo_bands = np.empty((2, self.n_cons), dtype=topo.dtype)
+            topo_bands = np.empty((2, n_cons), dtype=topo.dtype)
             for group_i in range(2):
-                for con_i in range(self.n_cons):
+                for con_i in range(n_cons):
                     band_topo = [
                         np.mean(topo[group_i][con_i][:, freq_idx_band], axis=1)
                         for freq_idx_band in self.freq_idx_bands
@@ -1019,6 +1016,9 @@ class _MVCSpectralEpochs():
         # which they were called
         # else you only have the remaining (non-GC with SVD/discontinuous
         # frequency) results, already in the order in which they were called
+
+        self.con = np.array(self.con)
+        self.topo = np.array(self.topo, dtype=object)
 
     def store_connectivity_results(self):
         """Stores multivariate connectivity results in mne-connectivity
