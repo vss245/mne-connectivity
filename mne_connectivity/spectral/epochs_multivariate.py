@@ -282,7 +282,10 @@ class _MVCSpectralEpochs():
                     'seeds and targets for each connection must be given as a '
                     'list of ints'
                 )
-            if any(self.method in self.gc_method_aliases) and set.intersection(set(seeds), set(targets)):
+            if (
+                any(method in self.method for method in self.gc_method_aliases)
+                and set.intersection(set(seeds), set(targets))
+            ):
                 raise ValueError(
                     'there are common indices present in the seeds and targets '
                     'for a single connection, however connectivity between '
