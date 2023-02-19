@@ -282,11 +282,11 @@ class _MVCSpectralEpochs():
                     'seeds and targets for each connection must be given as a '
                     'list of ints'
                 )
-            if set.intersection(set(seeds), set(targets)):
+            if any(self.method in self.gc_method_aliases) and set.intersection(set(seeds), set(targets)):
                 raise ValueError(
                     'there are common indices present in the seeds and targets '
-                    'for a single connection, however multivariate '
-                    'connectivity between shared channels is not supported'
+                    'for a single connection, however connectivity between '
+                    'shared channels is not supported for Granger causality'
                 )
         
         if isinstance(self.data, BaseEpochs):
