@@ -180,13 +180,17 @@ class TestMultivarSpectralConnectivity:
                 self.test_data, indices=([[0,2]], [[1,3.0]])
             )
 
-        with pytest.raises(
-            ValueError,
-            match='there are common indices present in the seeds and targets'
+        for method in ["gc", "net_gc", "trgc", "net_trgc"]:
+            with pytest.raises(
+                ValueError,
+                match='there are common indices present in the seeds and '
             ):
+                multivariate_spectral_connectivity_epochs(
+                    self.test_data, method=method, indices=([[0,2]], [[0,3]])
+                )
+        for method in ["mic", "mim"]:
             multivariate_spectral_connectivity_epochs(
-                self.test_data, indices=([[0,2]], [[0,3]])
-            )
+                self.test_data, method=method, indices=([[0,2]], [[0,3]]))
         
 
     def test_compute_separate_gc_csd_and_connectivity(self):
@@ -576,7 +580,7 @@ class TestMultivarSpectralConnectivity:
             self.test_data, indices=([[0,2]], [[1,3]]), sfreq=self.sfreq,
             fmin=(3, 8, 15), fmax=(7, 14, 20), faverage=True, method="gc"
             )
-
+        
         # Add checks that performing faverage in function call matches manual
         # result, and that same is seen for MIC topographies
 
@@ -617,6 +621,3 @@ class TestMultivarSpectralConnectivity:
         read_con = read_connectivity(tmp_file)
         assert_array_almost_equal(con.get_data(), read_con.get_data())
         assert repr(con) == repr(read_con)
-
-test = TestMultivarSpectralConnectivity
-test.test_n_components(test)
