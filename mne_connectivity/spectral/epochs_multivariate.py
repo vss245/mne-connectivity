@@ -11,60 +11,92 @@ from mne import BaseEpochs
 from mne.parallel import parallel_func
 from mne.utils import _arange_div, logger, ProgressBar, _time_mask
 from ..base import (
-    MultivariateSpectralConnectivity, MultivariateSpectroTemporalConnectivity
+    MultivariateSpectralConnectivity,
+    MultivariateSpectroTemporalConnectivity,
 )
 from .epochs import (
-    _assemble_spectral_params, _check_estimators, _compute_freqs,
-    _compute_freq_mask, _epoch_spectral_connectivity,
-    _get_and_verify_data_sizes, _get_n_epochs, _prepare_connectivity
+    _assemble_spectral_params,
+    _check_estimators,
+    _compute_freqs,
+    _compute_freq_mask,
+    _epoch_spectral_connectivity,
+    _get_and_verify_data_sizes,
+    _get_n_epochs,
+    _prepare_connectivity,
 )
 
 
-class _MVCSpectralEpochs():
+class _MVCSpectralEpochs:
     """Computes multivariate spectral connectivity of epoched data for the
     multivariate_spectral_connectivity_epochs function."""
 
     init_attrs = [
-        'data', 'indices', 'names', 'method', 'sfreq', 'mode', 'tmin', 'tmax',
-        'fmin', 'fmax', 'fskip', 'faverage', 'cwt_freqs', 'mt_bandwidth',
-        'mt_adaptive', 'mt_low_bias', 'cwt_n_cycles', 'n_components',
-        'gc_n_lags', 'block_size', 'n_jobs', 'verbose'
+        "data",
+        "indices",
+        "names",
+        "method",
+        "sfreq",
+        "mode",
+        "tmin",
+        "tmax",
+        "fmin",
+        "fmax",
+        "fskip",
+        "faverage",
+        "cwt_freqs",
+        "mt_bandwidth",
+        "mt_adaptive",
+        "mt_low_bias",
+        "cwt_n_cycles",
+        "n_components",
+        "gc_n_lags",
+        "block_size",
+        "n_jobs",
+        "verbose",
     ]
 
-    gc_method_aliases = ['gc', 'net_gc', 'trgc', 'net_trgc']
-    gc_method_names = ['GC', 'Net GC', 'TRGC', 'Net TRGC']
-    
+    gc_method_aliases = ["gc", "net_gc", "gc_tr", "trgc"]
+    gc_method_names = ["GC", "Net GC", "GC (time-reversed)", "TRGC"]
+
     # possible forms of GC with information on how to use the methods
     possible_gc_forms = {
-        'seeds -> targets': dict(
-            flip_seeds_targets=False, reverse_time=False,
-            for_methods=['GC', 'Net GC', 'TRGC', 'Net TRGC'], method_class=None
+        "seeds -> targets": dict(
+            flip_seeds_targets=False,
+            reverse_time=False,
+            for_methods=["GC", "Net GC", "GC (time-reversed)", "TRGC"],
+            method_class=None,
         ),
-        'targets -> seeds': dict(
-            flip_seeds_targets=True, reverse_time=False,
-            for_methods=['Net GC', 'Net TRGC'], method_class=None
+        "targets -> seeds": dict(
+            flip_seeds_targets=True,
+            reverse_time=False,
+            for_methods=["Net GC", "TRGC"],
+            method_class=None,
         ),
-        'time-reversed[seeds -> targets]': dict(
-            flip_seeds_targets=False, reverse_time=True,
-            for_methods=['TRGC', 'Net TRGC'], method_class=None
+        "time-reversed[seeds -> targets]": dict(
+            flip_seeds_targets=False,
+            reverse_time=True,
+            for_methods=["GC (time-reversed)", "TRGC"],
+            method_class=None,
         ),
-        'time-reversed[targets -> seeds]': dict(
-            flip_seeds_targets=True, reverse_time=True,
-            for_methods=['Net TRGC'], method_class=None
-        )
+        "time-reversed[targets -> seeds]": dict(
+            flip_seeds_targets=True,
+            reverse_time=True,
+            for_methods=["TRGC"],
+            method_class=None,
+        ),
     }
 
     # possible forms of coherence with information on how to use the methods
     possible_coh_forms = {
-        'MIC & MIM': dict(
-            for_methods=['MIC', 'MIM'], exclude_methods=[], method_class=None
+        "MIC & MIM": dict(
+            for_methods=["MIC", "MIM"], exclude_methods=[], method_class=None
         ),
-        'MIC': dict(
-            for_methods=['MIC'], exclude_methods=['MIM'], method_class=None
+        "MIC": dict(
+            for_methods=["MIC"], exclude_methods=["MIM"], method_class=None
         ),
-        'MIM': dict(
-            for_methods=['MIM'], exclude_methods=['MIC'], method_class=None
-        )
+        "MIM": dict(
+            for_methods=["MIM"], exclude_methods=["MIC"], method_class=None
+        ),
     }
 
     # threshold for classifying singular values as being non-zero
@@ -90,18 +122,18 @@ class _MVCSpectralEpochs():
 
     def __init__(self, **kwargs):
         assert all(attr in self.init_attrs for attr in kwargs.keys()), (
-            'Not all inputs to the _MVCSpectralEpochs class have been '
-            'provided. Please contact the mne-connectivity developers.'
+            "Not all inputs to the _MVCSpectralEpochs class have been "
+            "provided. Please contact the mne-connectivity developers."
         )
         for name, value in kwargs.items():
             assert name in self.init_attrs, (
-                'An input to the _MVCSpectralEpochs class is not recognised. '
-                'Please contact the mne-connectivity developers.'
+                "An input to the _MVCSpectralEpochs class is not recognised. "
+                "Please contact the mne-connectivity developers."
             )
             setattr(self, name, value)
-        
+
         self._sort_inputs()
-    
+
     def _sort_inputs(self):
         """Checks the format of the input parameters and enacts them to create
         new object attributes."""
@@ -114,23 +146,23 @@ class _MVCSpectralEpochs():
 
         if self.perform_svd or self.discontinuous_freqs:
             self.compute_gc_separately = True
-    
+
     def _sort_parallelisation_inputs(self):
-        """Establishes parallelisation of the function for computing the CSD if 
+        """Establishes parallelisation of the function for computing the CSD if
         n_jobs > 1, else uses the standard, non-parallelised function."""
-        self.parallel, self._epoch_spectral_connectivity, _ = (
-            parallel_func(
-                _epoch_spectral_connectivity, self.n_jobs, verbose=self.verbose
-            )
+        self.parallel, self._epoch_spectral_connectivity, _ = parallel_func(
+            _epoch_spectral_connectivity, self.n_jobs, verbose=self.verbose
         )
-    
+
     def _sort_data_info(self):
         """Extracts information stored in the data if it is an Epochs object,
         otherwise sets this information to `None`."""
         if isinstance(self.data, BaseEpochs):
             self.names = self.data.ch_names
-            self.times_in = self.data.times  # input times for Epochs input type
-            self.sfreq = self.data.info['sfreq']
+            self.times_in = (
+                self.data.times
+            )  # input times for Epochs input type
+            self.sfreq = self.data.info["sfreq"]
 
             self.events = self.data.events
             self.event_id = self.data.event_id
@@ -142,12 +174,16 @@ class _MVCSpectralEpochs():
                 self.annots_in_metadata = False
             else:
                 self.annots_in_metadata = all(
-                    name not in metadata.columns for name in 
-                    ['annot_onset', 'annot_duration', 'annot_description']
+                    name not in metadata.columns
+                    for name in [
+                        "annot_onset",
+                        "annot_duration",
+                        "annot_description",
+                    ]
                 )
             if (
-                hasattr(self.data, 'annotations') and not
-                self.annots_in_metadata
+                hasattr(self.data, "annotations")
+                and not self.annots_in_metadata
             ):
                 self.data.add_annotations_to_metadata(overwrite=True)
             self.metadata = self.data.metadata
@@ -167,14 +203,15 @@ class _MVCSpectralEpochs():
         self.con_method_types, _, _, _ = _check_estimators(
             self.method, self.mode
         )
-        metrics_str = ', '.join([meth.name for meth in self.con_method_types])
+        metrics_str = ", ".join([meth.name for meth in self.con_method_types])
         logger.info(
-            '    the following metrics will be computed: %s' % metrics_str
+            "    the following metrics will be computed: %s" % metrics_str
         )
 
         # find which Granger causality methods are being called
         self.present_gc_methods = [
-            con_method for con_method in self.method
+            con_method
+            for con_method in self.method
             if con_method in self.gc_method_aliases
         ]
 
@@ -188,9 +225,9 @@ class _MVCSpectralEpochs():
         self.fmin = np.array((self.fmin,), dtype=float).ravel()
         self.fmax = np.array((self.fmax,), dtype=float).ravel()
         if len(self.fmin) != len(self.fmax):
-            raise ValueError('fmin and fmax must have the same length')
+            raise ValueError("fmin and fmax must have the same length")
         if np.any(self.fmin > self.fmax):
-            raise ValueError('fmax must be larger than fmin')
+            raise ValueError("fmax must be larger than fmin")
 
         self.n_bands = len(self.fmin)
 
@@ -207,7 +244,7 @@ class _MVCSpectralEpochs():
         see if GC needs to be computed separately on a continuous set of
         frequencies spanning from the lowest fmin and highest fmax values which
         can then be split into the specified frequency bands.
-        
+
         A simpler check would be to set discontinuous = True if n_bands > 1,
         however it could be the case that the bands are continuous, e.g. 8-12 Hz
         and 13-20 Hz (with a freq. resolution of 1 Hz), in which case the
@@ -226,15 +263,15 @@ class _MVCSpectralEpochs():
         # case for these frequency indices) and should start from 1 (we make
         # this adjustment)
         use_freqs = np.nonzero(freq_mask)[0]
-        use_freqs = (use_freqs - min(use_freqs)) + 1 # need to start from 1
+        use_freqs = (use_freqs - min(use_freqs)) + 1  # need to start from 1
         if (
-            sum(np.arange(1, len(use_freqs) + 1)) !=
-            use_freqs[-1] * (use_freqs[-1] + 1) / 2
+            sum(np.arange(1, len(use_freqs) + 1))
+            != use_freqs[-1] * (use_freqs[-1] + 1) / 2
         ):
             assert self.n_bands != 1, (
-                'Frequencies have been detected as discontinuous, yet there is '
-                'only a single frequency band in the data. Please contact the '
-                'mne-connectivity developers.'
+                "Frequencies have been detected as discontinuous, yet there is "
+                "only a single frequency band in the data. Please contact the "
+                "mne-connectivity developers."
             )
             self.discontinuous_freqs = True
 
@@ -259,53 +296,51 @@ class _MVCSpectralEpochs():
         """Checks that the indices are appropriate and sets the number of seeds
         and targets in each connection."""
         if self.indices is None:
-            raise ValueError('indices must be specified, got `None`')
+            raise ValueError("indices must be specified, got `None`")
 
         if len(self.indices[0]) != len(self.indices[1]):
             raise ValueError(
-                f'the number of seeds ({len(self.indices[0])}) and targets '
-                f'({len(self.indices[1])}) must match'
+                f"the number of seeds ({len(self.indices[0])}) and targets "
+                f"({len(self.indices[1])}) must match"
             )
         self.n_cons = len(self.indices[0])
 
         for seeds, targets in zip(self.indices[0], self.indices[1]):
             if not isinstance(seeds, list) or not isinstance(targets, list):
                 raise TypeError(
-                    'seeds and targets for each connection must be given as a '
-                    'list of ints'
+                    "seeds and targets for each connection must be given as a "
+                    "list of ints"
                 )
-            if (
-                not all(isinstance(seed, int) for seed in seeds) or
-                not all(isinstance(target, int) for target in targets)
+            if not all(isinstance(seed, int) for seed in seeds) or not all(
+                isinstance(target, int) for target in targets
             ):
                 raise TypeError(
-                    'seeds and targets for each connection must be given as a '
-                    'list of ints'
+                    "seeds and targets for each connection must be given as a "
+                    "list of ints"
                 )
-            if (
-                any(method in self.method for method in self.gc_method_aliases)
-                and set.intersection(set(seeds), set(targets))
-            ):
+            if any(
+                method in self.method for method in self.gc_method_aliases
+            ) and set.intersection(set(seeds), set(targets)):
                 raise ValueError(
-                    'there are common indices present in the seeds and targets '
-                    'for a single connection, however connectivity between '
-                    'shared channels is not supported for Granger causality'
+                    "there are common indices present in the seeds and targets "
+                    "for a single connection, however connectivity between "
+                    "shared channels is not supported for Granger causality"
                 )
-        
+
         if isinstance(self.data, BaseEpochs):
             n_channels = self.data.get_data().shape[1]
         else:
             n_channels = self.data.shape[1]
         if len(self._get_unique_signals(self.indices)) > n_channels:
             raise ValueError(
-                'the number of unique signals in indices is greater than the '
-                'number of channels in the data'
+                "the number of unique signals in indices is greater than the "
+                "number of channels in the data"
             )
 
     def _sort_svd_inputs(self):
         """Checks that the SVD parameters are appropriate and finds the correct
         dimensionality reduction settings to use, if applicable.
-        
+
         This involves the rank of the data being computed based its non-zero
         singular values. We use a cut-off of the largest singular value * 1e-5
         by default to determine when a value is non-zero, as using numpy's
@@ -318,29 +353,29 @@ class _MVCSpectralEpochs():
         if self.n_components is None:
             self.n_components = (
                 [None for _ in range(self.n_cons)],
-                [None for _ in range(self.n_cons)]
+                [None for _ in range(self.n_cons)],
             )
-        
-        if self.n_components == 'rank':
+
+        if self.n_components == "rank":
             self.n_components = (
-                ['rank' for _ in range(self.n_cons)],
-                ['rank' for _ in range(self.n_cons)]
+                ["rank" for _ in range(self.n_cons)],
+                ["rank" for _ in range(self.n_cons)],
             )
-        
+
         if not isinstance(self.n_components, tuple):
-            raise TypeError('n_components must be a tuple')
+            raise TypeError("n_components must be a tuple")
 
         for group_i, group_comps in enumerate(self.n_components):
             if group_comps is None:
                 group_comps[group_i] = [None for _ in range(self.n_cons)]
-                
+
             if not isinstance(group_comps, list):
-                raise TypeError('entries of n_components must be lists')
+                raise TypeError("entries of n_components must be lists")
 
             if len(group_comps) != self.n_cons:
                 raise ValueError(
-                    'entries of n_components must have the same length as '
-                    'specified the number of connections in indices'
+                    "entries of n_components must have the same length as "
+                    "specified the number of connections in indices"
                 )
 
             if not self.perform_svd and any(
@@ -354,40 +389,46 @@ class _MVCSpectralEpochs():
                 epochs = self.data.get_data(picks=self.data.ch_names)
             else:
                 epochs = self.data
-        
-            for group_idcs, group_comps in zip(self.indices, self.n_components):
+
+            for group_idcs, group_comps in zip(
+                self.indices, self.n_components
+            ):
                 if any(con_comps is not None for con_comps in group_comps):
                     index_i = 0
                     for con_comps, con_chs in zip(group_comps, group_idcs):
                         if isinstance(con_comps, int):
                             if con_comps > len(con_chs):
                                 raise ValueError(
-                                    'the number of components to take cannot '
-                                    'be greater than the number of channels in '
-                                    'a given seed/target'
+                                    "the number of components to take cannot "
+                                    "be greater than the number of channels in "
+                                    "a given seed/target"
                                 )
                             if con_comps <= 0:
                                 raise ValueError(
-                                    'the number of components to take must be '
-                                    'greater than 0'
+                                    "the number of components to take must be "
+                                    "greater than 0"
                                 )
                         elif isinstance(con_comps, str):
-                            if con_comps != 'rank':
+                            if con_comps != "rank":
                                 raise ValueError(
-                                    'if the number of components is specified '
+                                    "if the number of components is specified "
                                     'as a string, it must be the string "rank"'
                                 )
                             # compute the rank of the seeds/targets for a con
                             S = np.linalg.svd(
-                                epochs[:, con_chs, :],
-                                compute_uv=False
+                                epochs[:, con_chs, :], compute_uv=False
                             )
-                            group_comps[index_i] = min([np.count_nonzero(
-                                    s >= s[0]*self.rank_nonzero_tol
-                            ) for s in S])
+                            group_comps[index_i] = min(
+                                [
+                                    np.count_nonzero(
+                                        s >= s[0] * self.rank_nonzero_tol
+                                    )
+                                    for s in S
+                                ]
+                            )
                         elif con_comps is not None:
                             raise TypeError(
-                                'n_components must be tuples of lists of '
+                                "n_components must be tuples of lists of "
                                 '`None`, `int`, or the string "rank"'
                             )
                         index_i += 1
@@ -408,12 +449,12 @@ class _MVCSpectralEpochs():
 
         # combine all connectivity results (if GC was computed seperately)
         self._collate_connectivity_results()
-    
+
     def _compute_separate_gc_csd_and_connectivity(self):
         """Computes the CSD and connectivity for GC methods separately from
         other methods if SVD is being performed, or the requested fbands are
         discontinuous.
-        
+
         If SVD is being performed with GC, this has to be done on the
         timeseries data for each connection separately, and so this transformed
         data cannot be used to compute the CSD for coherence-based connectivity
@@ -426,8 +467,9 @@ class _MVCSpectralEpochs():
         """
         # finds the GC methods to compute
         self.separate_gc_method_types = [
-            mtype for mtype in self.con_method_types if mtype.name in
-            self.gc_method_names
+            mtype
+            for mtype in self.con_method_types
+            if mtype.name in self.gc_method_names
         ]
 
         seed_target_data, n_seeds = self._seeds_targets_svd()
@@ -440,22 +482,26 @@ class _MVCSpectralEpochs():
         for con_data, n_seed_comps in zip(seed_target_data, n_seeds):
             new_indices = (
                 [np.arange(n_seed_comps).tolist()],
-                [np.arange(n_seed_comps, con_data.shape[1]).tolist()]
+                [np.arange(n_seed_comps, con_data.shape[1]).tolist()],
             )
 
             con_methods = self._compute_csd(
                 con_data, self.separate_gc_method_types, new_indices
             )
 
-            this_con, _, = self._compute_connectivity(con_methods, new_indices)
+            (
+                this_con,
+                _,
+            ) = self._compute_connectivity(con_methods, new_indices)
 
             for method_i in range(n_gc_methods):
                 self.separate_gc_con[method_i].extend(this_con[method_i])
 
         # finds the methods still needing to be computed
         self.remaining_method_types = [
-            mtype for mtype in self.con_method_types if
-            mtype not in self.separate_gc_method_types
+            mtype
+            for mtype in self.con_method_types
+            if mtype not in self.separate_gc_method_types
         ]
 
     def _seeds_targets_svd(self):
@@ -471,20 +517,22 @@ class _MVCSpectralEpochs():
         seed_target_data = []
         n_seeds = []
         for seeds, targets, n_seed_comps, n_target_comps in zip(
-            self.indices[0], self.indices[1], self.n_components[0],
-            self.n_components[1]
+            self.indices[0],
+            self.indices[1],
+            self.n_components[0],
+            self.n_components[1],
         ):
-            if n_seed_comps is not None: # SVD seed data
+            if n_seed_comps is not None:  # SVD seed data
                 seed_data = self._epochs_svd(epochs[:, seeds, :], n_seed_comps)
-            else: # use unaltered seed data
+            else:  # use unaltered seed data
                 seed_data = epochs[:, seeds, :]
             n_seeds.append(seed_data.shape[1])
 
-            if n_target_comps is not None: # SVD target data
+            if n_target_comps is not None:  # SVD target data
                 target_data = self._epochs_svd(
                     epochs[:, targets, :], n_target_comps
                 )
-            else: # use unaltered target data
+            else:  # use unaltered target data
                 target_data = epochs[:, targets, :]
 
             seed_target_data.append(np.append(seed_data, target_data, axis=1))
@@ -522,30 +570,34 @@ class _MVCSpectralEpochs():
             self.data, self.remaining_method_types, self.indices
         )
 
-        self.remaining_con, self.remaining_topo = (
-            self._compute_connectivity(con_methods, self.remapped_indices)
+        self.remaining_con, self.remaining_topo = self._compute_connectivity(
+            con_methods, self.remapped_indices
         )
 
     def _compute_csd(self, data, con_method_types, indices):
         """Computes the cross-spectral density of the data in preparation for
         the multivariate connectivity computations."""
-        logger.info('Connectivity computation...')
+        logger.info("Connectivity computation...")
 
         con_methods = self._prepare_csd_computation(
             data, con_method_types, indices
         )
 
         # performs the CSD computation for each epoch block
-        logger.info('Computing cross-spectral density from epochs')
+        logger.info("Computing cross-spectral density from epochs")
         self.n_epochs = 0
         for epoch_block in ProgressBar(
-            self.epoch_blocks, mesg='CSD epoch blocks'
+            self.epoch_blocks, mesg="CSD epoch blocks"
         ):
             # check dimensions and time scale
             for this_epoch in epoch_block:
                 _, _, _, self.warn_times = _get_and_verify_data_sizes(
-                    this_epoch, self.sfreq, self.n_signals, self.n_times_in,
-                    self.times_in, warn_times=self.warn_times
+                    this_epoch,
+                    self.sfreq,
+                    self.n_signals,
+                    self.n_times_in,
+                    self.times_in,
+                    warn_times=self.warn_times,
                 )
                 self.n_epochs += 1
 
@@ -561,7 +613,7 @@ class _MVCSpectralEpochs():
             for epoch in epochs:
                 for method, epoch_csd in zip(con_methods, epoch[0]):
                     method.combine(epoch_csd)
-        
+
         return con_methods
 
     def _prepare_csd_computation(self, data, con_method_types, indices):
@@ -573,41 +625,83 @@ class _MVCSpectralEpochs():
 
         fmin, fmax = self._get_fmin_fmax_for_csd(con_method_types)
         (
-            _, self.times, n_times, self.times_in, self.n_times_in, tmin_idx,
-            tmax_idx, self.n_freqs, freq_mask, self.freqs, freqs_bands,
-            freq_idx_bands, self.n_signals, _, self.warn_times
+            _,
+            self.times,
+            n_times,
+            self.times_in,
+            self.n_times_in,
+            tmin_idx,
+            tmax_idx,
+            self.n_freqs,
+            freq_mask,
+            self.freqs,
+            freqs_bands,
+            freq_idx_bands,
+            self.n_signals,
+            _,
+            self.warn_times,
         ) = _prepare_connectivity(
-            epoch_block=self.epoch_blocks[0], times_in=self.times_in,
-            tmin=self.tmin, tmax=self.tmax, fmin=fmin, fmax=fmax,
-            sfreq=self.sfreq, indices=indices, mode=self.mode,
-            fskip=self.fskip, n_bands=self.n_bands, cwt_freqs=self.cwt_freqs,
-            faverage=self.faverage
+            epoch_block=self.epoch_blocks[0],
+            times_in=self.times_in,
+            tmin=self.tmin,
+            tmax=self.tmax,
+            fmin=fmin,
+            fmax=fmax,
+            sfreq=self.sfreq,
+            indices=indices,
+            mode=self.mode,
+            fskip=self.fskip,
+            n_bands=self.n_bands,
+            cwt_freqs=self.cwt_freqs,
+            faverage=self.faverage,
         )
         self._store_freq_band_info(
             con_method_types, freqs_bands, freq_idx_bands
         )
 
-        spectral_params, mt_adaptive, self.n_times_spectrum, self.n_tapers = (
-            _assemble_spectral_params(
-                mode=self.mode, n_times=n_times, mt_adaptive=self.mt_adaptive,
-                mt_bandwidth=self.mt_bandwidth, sfreq=self.sfreq,
-                mt_low_bias=self.mt_low_bias, cwt_n_cycles=self.cwt_n_cycles,
-                cwt_freqs=self.cwt_freqs, freqs=self.freqs, freq_mask=freq_mask
-            )
+        (
+            spectral_params,
+            mt_adaptive,
+            self.n_times_spectrum,
+            self.n_tapers,
+        ) = _assemble_spectral_params(
+            mode=self.mode,
+            n_times=n_times,
+            mt_adaptive=self.mt_adaptive,
+            mt_bandwidth=self.mt_bandwidth,
+            sfreq=self.sfreq,
+            mt_low_bias=self.mt_low_bias,
+            cwt_n_cycles=self.cwt_n_cycles,
+            cwt_freqs=self.cwt_freqs,
+            freqs=self.freqs,
+            freq_mask=freq_mask,
         )
 
         self._sort_con_indices(indices)
 
-        con_methods = self._instantiate_con_estimators(con_method_types, indices)
+        con_methods = self._instantiate_con_estimators(
+            con_method_types, indices
+        )
 
         self.csd_call_params = dict(
-            sig_idx=self.sig_idx, tmin_idx=tmin_idx, tmax_idx=tmax_idx,
-            sfreq=self.sfreq, mode=self.mode, freq_mask=freq_mask,
-            idx_map=self.idx_map, block_size=self.block_size, psd=None,
-            accumulate_psd=False, mt_adaptive=mt_adaptive,
-            con_method_types=self.con_method_types, con_methods=None,
-            n_signals=self.n_signals, use_n_signals=self.use_n_signals,
-            n_times=n_times, gc_n_lags=self.gc_n_lags, accumulate_inplace=False
+            sig_idx=self.sig_idx,
+            tmin_idx=tmin_idx,
+            tmax_idx=tmax_idx,
+            sfreq=self.sfreq,
+            mode=self.mode,
+            freq_mask=freq_mask,
+            idx_map=self.idx_map,
+            block_size=self.block_size,
+            psd=None,
+            accumulate_psd=False,
+            mt_adaptive=mt_adaptive,
+            con_method_types=self.con_method_types,
+            con_methods=None,
+            n_signals=self.n_signals,
+            use_n_signals=self.use_n_signals,
+            n_times=n_times,
+            gc_n_lags=self.gc_n_lags,
+            accumulate_inplace=False,
         )
         self.csd_call_params.update(**spectral_params)
 
@@ -616,14 +710,15 @@ class _MVCSpectralEpochs():
     def _get_fmin_fmax_for_csd(self, con_method_types):
         """Gets fmin and fmax args to use for the CSD computation."""
         if (
-            self.present_gc_methods and self.discontinuous_freqs and
-            con_method_types[0] in self.separate_gc_method_types
+            self.present_gc_methods
+            and self.discontinuous_freqs
+            and con_method_types[0] in self.separate_gc_method_types
         ):
             # compute GC on a continuous set of freqs spanning all bands of
             # interest due to the cross-freq relationship of the GC methods
             return (
-                np.array((np.min(self.fmin), )),
-                np.array((np.max(self.fmax), ))
+                np.array((np.min(self.fmin),)),
+                np.array((np.max(self.fmax),)),
             )
 
         # use existing fmin and fmax if GC is not being computed, or if GC is
@@ -636,15 +731,16 @@ class _MVCSpectralEpochs():
         """Ensures the frequency band information returned from the connectivity
         preparation function is correct before storing them in the object."""
         if (
-            self.present_gc_methods and self.discontinuous_freqs and
-            con_method_types[0] in self.separate_gc_method_types
+            self.present_gc_methods
+            and self.discontinuous_freqs
+            and con_method_types[0] in self.separate_gc_method_types
         ):
             # compute fbands and indices as the freqs appear in fmin and fmax;
             # required as the fmin and fmax args to the connectivity preparation
             # function differ to those provided by the end user
             self.freq_idx_bands = [
-                np.where((self.freqs >= fl) & (self.freqs <= fu))[0] for
-                fl, fu in zip(self.fmin, self.fmax)
+                np.where((self.freqs >= fl) & (self.freqs <= fu))[0]
+                for fl, fu in zip(self.fmin, self.fmax)
             ]
             self.freqs_bands = [
                 self.freqs[freq_idx] for freq_idx in self.freq_idx_bands
@@ -662,10 +758,12 @@ class _MVCSpectralEpochs():
         # map indices to unique indices
         unique_indices = np.unique(np.concatenate(sum(indices, [])))
         remapping = {ch_i: sig_i for sig_i, ch_i in enumerate(unique_indices)}
-        self.remapped_indices = tuple([
-            [[remapping[idx] for idx in idcs] for idcs in indices_group]
-            for indices_group in indices
-        ])
+        self.remapped_indices = tuple(
+            [
+                [[remapping[idx] for idx in idcs] for idcs in indices_group]
+                for indices_group in indices
+            ]
+        )
 
         # unique signals for which we actually need to compute CSD
         self.sig_idx = self._get_unique_signals(self.remapped_indices)
@@ -673,10 +771,8 @@ class _MVCSpectralEpochs():
 
         # gets seed-target indices for CSD
         self.idx_map = [
-            np.repeat(
-                self.sig_idx, len(self.sig_idx)),
-                np.tile(self.sig_idx, len(self.sig_idx)
-            )
+            np.repeat(self.sig_idx, len(self.sig_idx)),
+            np.tile(self.sig_idx, len(self.sig_idx)),
         ]
 
     def _get_unique_signals(self, indices):
@@ -692,19 +788,26 @@ class _MVCSpectralEpochs():
                 # if a GC method, provide n_lags argument
                 con_methods.append(
                     mtype(
-                        self.use_n_signals, len(indices[0]), self.n_freqs,
-                        self.n_times_spectrum, self.gc_n_lags, self.n_jobs
+                        self.use_n_signals,
+                        len(indices[0]),
+                        self.n_freqs,
+                        self.n_times_spectrum,
+                        self.gc_n_lags,
+                        self.n_jobs,
                     )
                 )
             else:
                 # if a coherence method, do not provide n_lags argument
                 con_methods.append(
                     mtype(
-                        self.use_n_signals, len(indices[0]), self.n_freqs,
-                        self.n_times_spectrum, self.n_jobs
+                        self.use_n_signals,
+                        len(indices[0]),
+                        self.n_freqs,
+                        self.n_times_spectrum,
+                        self.n_jobs,
                     )
                 )
-        
+
         return con_methods
 
     def _compute_connectivity(self, con_methods, indices):
@@ -725,8 +828,8 @@ class _MVCSpectralEpochs():
         method_i = 0
         for method_con, method_topo in zip(con, topo):
             assert method_con is not None, (
-                'A connectivity result has been missed. Please contact the '
-                'mne-connectivity developers.'
+                "A connectivity result has been missed. Please contact the "
+                "mne-connectivity developers."
             )
 
             self._check_correct_results_dimensions(
@@ -735,9 +838,9 @@ class _MVCSpectralEpochs():
 
             if self.faverage:
                 con[method_i], topo[method_i] = self._compute_faverage(
-                        con=method_con, topo=method_topo
-                    )
-            
+                    con=method_con, topo=method_topo
+                )
+
             method_i += 1
 
         self.freqs_used = self.freqs
@@ -756,7 +859,7 @@ class _MVCSpectralEpochs():
 
     def _compute_gc_connectivity(self, con_methods, con, indices):
         """Computes GC connectivity.
-        
+
         Different GC methods can rely on common information, so rather than
         re-computing this information everytime a different GC method is called,
         store this information such that it can be accessed to compute the final
@@ -770,21 +873,24 @@ class _MVCSpectralEpochs():
             gc_scores = {}
             for form_name, form_info in self.compute_gc_forms.items():
                 # computes connectivity for individual GC forms
-                form_info['method_class'].compute_con(
-                    indices[0], indices[1], form_info['flip_seeds_targets'], 
-                    form_info['reverse_time'], form_name
+                form_info["method_class"].compute_con(
+                    indices[0],
+                    indices[1],
+                    form_info["flip_seeds_targets"],
+                    form_info["reverse_time"],
+                    form_name,
                 )
 
                 # assigns connectivity score to their appropriate GC forms for
                 # combining into the final GC method results
-                gc_scores[form_name] = form_info['method_class'].con_scores
-            
+                gc_scores[form_name] = form_info["method_class"].con_scores
+
             con = self._combine_gc_forms(con_methods, con, gc_scores)
-        
+
             # remove the results for frequencies not requested by the end user
             if self.discontinuous_freqs:
                 con = self._make_gc_freqs_discontinuous(con)
-            
+
             # set n_signals to equal the number in the non-SVD data
             if self.perform_svd:
                 self.n_signals = len(self._get_unique_signals(self.indices))
@@ -797,8 +903,8 @@ class _MVCSpectralEpochs():
         for form_name, form_info in self.possible_gc_forms.items():
             for method in con_methods:
                 if (
-                    method.name in form_info['for_methods'] and
-                    form_name not in self.compute_gc_forms.keys()
+                    method.name in form_info["for_methods"]
+                    and form_name not in self.compute_gc_forms.keys()
                 ):
                     form_info.update(method_class=copy.deepcopy(method))
                     self.compute_gc_forms[form_name] = form_info
@@ -808,37 +914,32 @@ class _MVCSpectralEpochs():
         first_form = True
         for form_info in self.compute_gc_forms.values():
             if first_form:
-                form_info['method_class'].compute_autocov(self.n_epochs)
-                autocov = form_info['method_class'].autocov.copy()
+                form_info["method_class"].compute_autocov(self.n_epochs)
+                autocov = form_info["method_class"].autocov.copy()
                 first_form = False
             else:
-                form_info['method_class'].autocov = autocov
+                form_info["method_class"].autocov = autocov
 
     def _combine_gc_forms(self, con_methods, con, gc_scores):
         """Combines the information from all the different GC forms so that the
         final connectivity scores for the requested GC methods are returned."""
         for method_i, method in enumerate(con_methods):
-            if method.name == 'GC':
-                con[method_i] = gc_scores['seeds -> targets']
-            elif method.name == 'Net GC':
+            if method.name == "GC":
+                con[method_i] = gc_scores["seeds -> targets"]
+            elif method.name == "Net GC":
                 con[method_i] = (
-                    gc_scores['seeds -> targets'] -
-                    gc_scores['targets -> seeds']
+                    gc_scores["seeds -> targets"]
+                    - gc_scores["targets -> seeds"]
                 )
-            elif method.name == 'TRGC':
+            elif method.name == "GC (time-reversed)":
+                con[method_i] = gc_scores["time-reversed[seeds -> targets]"]
+            elif method.name == "TRGC":
                 con[method_i] = (
-                    gc_scores['seeds -> targets'] -
-                    gc_scores['time-reversed[seeds -> targets]']
-                )
-            elif method.name == 'Net TRGC':
-                con[method_i] = (
-                    (
-                        gc_scores['seeds -> targets'] -
-                        gc_scores['targets -> seeds']
-                    ) - (
-                        gc_scores['time-reversed[seeds -> targets]'] -
-                        gc_scores['time-reversed[targets -> seeds]']
-                    )
+                    gc_scores["seeds -> targets"]
+                    - gc_scores["targets -> seeds"]
+                ) - (
+                    gc_scores["time-reversed[seeds -> targets]"]
+                    - gc_scores["time-reversed[targets -> seeds]"]
                 )
 
         return con
@@ -849,11 +950,11 @@ class _MVCSpectralEpochs():
         # find which freqs in the results are needed
         requested_freqs = np.concatenate(self.freq_idx_bands)
         freq_mask = [freq in requested_freqs for freq in range(self.n_freqs)]
-        
+
         # exclude the unwanted freqs from the results
         for method_i, method_con in enumerate(con):
             con[method_i] = method_con[:, freq_mask]
-        
+
         # set the frequency attrs to the correct, discontinuous values
         self.n_freqs = len(requested_freqs)
         self.freqs = self.freqs[freq_mask]
@@ -871,7 +972,7 @@ class _MVCSpectralEpochs():
 
     def _compute_coh_connectivity(self, con_methods, con, topo, indices):
         """Computes MIC and MIM connectivity.
-        
+
         MIC and MIM rely on common information, so rather than re-computing this
         information everytime a different coherence method is called, store this
         information such that it can be accessed to compute the final MIC and
@@ -883,18 +984,21 @@ class _MVCSpectralEpochs():
             # compute connectivity for MIC and/or MIM in a single instance
             form_name = list(self.compute_coh_form.keys())[0]  # only one there
             form_info = self.compute_coh_form[form_name]
-            form_info['method_class'].compute_con(
-                indices[0], indices[1], self.n_components, self.n_epochs,
-                form_name
+            form_info["method_class"].compute_con(
+                indices[0],
+                indices[1],
+                self.n_components,
+                self.n_epochs,
+                form_name,
             )
-        
+
             # store the MIC and/or MIM results in the right places
             for method_i, method in enumerate(con_methods):
                 if method.name == "MIC":
-                    con[method_i] = form_info['method_class'].mic_scores
-                    topo[method_i] = form_info['method_class'].topographies
+                    con[method_i] = form_info["method_class"].mic_scores
+                    topo[method_i] = form_info["method_class"].topographies
                 elif method.name == "MIM":
-                    con[method_i] = form_info['method_class'].mim_scores
+                    con[method_i] = form_info["method_class"].mim_scores
 
         return con, topo
 
@@ -903,70 +1007,70 @@ class _MVCSpectralEpochs():
         method_names = [method.name for method in con_methods]
         self.compute_coh_form = {}
         for form_name, form_info in self.possible_coh_forms.items():
-            if (
-                all(name in method_names for name in form_info['for_methods'])
-                and not any(
-                    name in method_names for name in
-                    form_info['exclude_methods']
-                )
+            if all(
+                name in method_names for name in form_info["for_methods"]
+            ) and not any(
+                name in method_names for name in form_info["exclude_methods"]
             ):
                 coh_class = con_methods[
-                    method_names.index(form_info['for_methods'][0])
+                    method_names.index(form_info["for_methods"][0])
                 ]
                 form_info.update(method_class=coh_class)
                 self.compute_coh_form[form_name] = form_info
-                break # only one form is possible at any one instance
+                break  # only one form is possible at any one instance
 
-    def _check_correct_results_dimensions(self, con_methods, con, topo, indices):
+    def _check_correct_results_dimensions(
+        self, con_methods, con, topo, indices
+    ):
         """Checks that the results of the connectivity computations have the
         appropriate dimensions."""
         n_cons = len(indices[0])
         n_times = con_methods[0].n_times
 
-        assert (con.shape[0] == n_cons), (
-            'The first dimension of connectivity scores does not match the '
-            'number of connections. Please contact the mne-connectivity ' 
-            'developers.'
+        assert con.shape[0] == n_cons, (
+            "The first dimension of connectivity scores does not match the "
+            "number of connections. Please contact the mne-connectivity "
+            "developers."
         )
 
-        assert (con.shape[1] == self.n_freqs), (
-            'The second dimension of connectivity scores does not match the '
-            'number of frequencies. Please contact the mne-connectivity ' 
-            'developers.'
+        assert con.shape[1] == self.n_freqs, (
+            "The second dimension of connectivity scores does not match the "
+            "number of frequencies. Please contact the mne-connectivity "
+            "developers."
         )
 
         if n_times != 0:
-            assert (con.shape[2] == n_times), (
-                'The third dimension of connectivity scores does not match '
-                'the number of timepoints. Please contact the mne-connectivity ' 
-                'developers.'
+            assert con.shape[2] == n_times, (
+                "The third dimension of connectivity scores does not match "
+                "the number of timepoints. Please contact the mne-connectivity "
+                "developers."
             )
-        
+
         if topo is not None:
-            assert (topo[0].shape[0] == n_cons and topo[1].shape[0]), (
-                'The first dimension of topographies does not match the number '
-                'of connections. Please contact the mne-connectivity '
-                'developers.'
+            assert topo[0].shape[0] == n_cons and topo[1].shape[0], (
+                "The first dimension of topographies does not match the number "
+                "of connections. Please contact the mne-connectivity "
+                "developers."
             )
 
             for con_i in range(n_cons):
                 assert (
-                    topo[0][con_i].shape[1] == self.n_freqs and
-                    topo[1][con_i].shape[1] == self.n_freqs
+                    topo[0][con_i].shape[1] == self.n_freqs
+                    and topo[1][con_i].shape[1] == self.n_freqs
                 ), (
-                    'The second dimension of topographies does not match the '
-                    'number of frequencies. Please contact the '
-                    'mne-connectivity developers.'
+                    "The second dimension of topographies does not match the "
+                    "number of frequencies. Please contact the "
+                    "mne-connectivity developers."
                 )
 
                 if n_times != 0:
                     assert (
-                        topo[0][con_i].shape[2] == n_times and
-                        topo[1][con_i].shape[2] == n_times
+                        topo[0][con_i].shape[2] == n_times
+                        and topo[1][con_i].shape[2] == n_times
                     ), (
-                        'The third dimension of topographies does not match '
-                        'the number of timepoints. Please contact the '
-                        'mne-connectivity developers.'
+                        "The third dimension of topographies does not match "
+                        "the number of timepoints. Please contact the "
+                        "mne-connectivity developers."
                     )
 
     def _compute_faverage(self, con, topo):
@@ -990,7 +1094,7 @@ class _MVCSpectralEpochs():
                     topo_bands[group_i][con_i] = np.array(band_topo).T
         else:
             topo_bands = None
-        
+
         return con_bands, topo_bands
 
     def _collate_connectivity_results(self):
@@ -1004,15 +1108,15 @@ class _MVCSpectralEpochs():
             # orders the results according to the order they were called
             methods_order = [
                 *[mtype.name for mtype in self.remaining_method_types],
-                *[mtype.name for mtype in self.separate_gc_method_types]
+                *[mtype.name for mtype in self.separate_gc_method_types],
             ]
             self.con = [
-                self.con[methods_order.index(mtype.name)] for mtype in
-                self.con_method_types
+                self.con[methods_order.index(mtype.name)]
+                for mtype in self.con_method_types
             ]
             self.topo = [
-                self.topo[methods_order.index(mtype.name)] for mtype in
-                self.con_method_types
+                self.topo[methods_order.index(mtype.name)]
+                for mtype in self.con_method_types
             ]
 
         # else if only separate GC connectivity, results already in order in
@@ -1030,26 +1134,36 @@ class _MVCSpectralEpochs():
         self.connectivity = []
         for _con, _topo, _method in zip(self.con, self.topo, self.method):
             kwargs = dict(
-                data=_con, topographies=_topo, names=self.names,
-                freqs=self.freqs, method=_method, n_nodes=self.n_nodes,
-                spec_method=self.mode, indices=self.indices,
-                n_components=self.n_components, n_epochs_used=self.n_epochs,
-                freqs_used=self.freqs_used, times_used=self.times,
-                n_tapers=self.n_tapers, n_lags=None, metadata=self.metadata,
-                events=self.events, event_id=self.event_id
+                data=_con,
+                topographies=_topo,
+                names=self.names,
+                freqs=self.freqs,
+                method=_method,
+                n_nodes=self.n_nodes,
+                spec_method=self.mode,
+                indices=self.indices,
+                n_components=self.n_components,
+                n_epochs_used=self.n_epochs,
+                freqs_used=self.freqs_used,
+                times_used=self.times,
+                n_tapers=self.n_tapers,
+                n_lags=None,
+                metadata=self.metadata,
+                events=self.events,
+                event_id=self.event_id,
             )
-            if _method in ['gc', 'net_gc', 'trgc', 'net_trgc']:
+            if _method in ["gc", "net_gc", "gc_tr", "trgc"]:
                 kwargs.update(n_lags=self.gc_n_lags)
             # create the connectivity container
-            if self.mode in ['multitaper', 'fourier']:
+            if self.mode in ["multitaper", "fourier"]:
                 conn_class = MultivariateSpectralConnectivity
             else:
-                assert self.mode == 'cwt_morlet'
+                assert self.mode == "cwt_morlet"
                 conn_class = MultivariateSpectroTemporalConnectivity
                 kwargs.update(times=self.times)
             self.connectivity.append(conn_class(**kwargs))
 
-        logger.info('[Connectivity computation done]')
+        logger.info("[Connectivity computation done]")
 
         if len(self.method) == 1:
             # for a single method store the connectivity object directly
@@ -1057,12 +1171,28 @@ class _MVCSpectralEpochs():
 
 
 def multivariate_spectral_connectivity_epochs(
-    data, indices, names = None, method = "mic", sfreq = 2 * np.pi,
-    mode = "multitaper", tmin = None, tmax = None, fmin = None, fmax = np.inf,
-    fskip = 0, faverage = False, cwt_freqs = None, mt_bandwidth = None,
-    mt_adaptive = False, mt_low_bias = True, cwt_n_cycles = 7.0,
-    n_components = None, gc_n_lags = 20, block_size = 1000, n_jobs = 1,
-    verbose = None,
+    data,
+    indices,
+    names=None,
+    method="mic",
+    sfreq=2 * np.pi,
+    mode="multitaper",
+    tmin=None,
+    tmax=None,
+    fmin=None,
+    fmax=np.inf,
+    fskip=0,
+    faverage=False,
+    cwt_freqs=None,
+    mt_bandwidth=None,
+    mt_adaptive=False,
+    mt_low_bias=True,
+    cwt_n_cycles=7.0,
+    n_components=None,
+    gc_n_lags=20,
+    block_size=1000,
+    n_jobs=1,
+    verbose=None,
 ):
     """Compute frequency-domain multivariate connectivity measures.
 
@@ -1112,11 +1242,11 @@ def multivariate_spectral_connectivity_epochs(
     fmax : float; default infinity
     -   Maximum frequency of interest, in Hz. Only used if "mode" is 'fourier'
         or 'multitaper'.
-    
+
     fskip : int; default 0
     -   Omit every “(fskip + 1)-th” frequency bin to decimate in frequency
         domain.
-    
+
     faverage : bool; default False
     -   Average connectivity scores for each frequency band. If True, the output
         freqs will be a list with arrays of the frequencies that were averaged.
@@ -1158,7 +1288,7 @@ def multivariate_spectral_connectivity_epochs(
     -   The number of lags to use when computing the autocovariance sequence
         from the cross-spectral density. Only used if "method" is 'gc',
         'net_gc', 'trgc', or 'net_trgc'.
-    
+
     block_size : int; default 1000
     -   How many cross-spectral density entries to compute at once (higher
         numbers are faster but require more memory).
@@ -1198,7 +1328,7 @@ def multivariate_spectral_connectivity_epochs(
     %(names)s
     method : str | list of str
         Connectivity measure(s) to compute. These can be ``['mic', 'mim', 'gc',
-        'net_gc', 'trgc', 'net_trgc']``.
+        'net_gc', 'gc_tr', 'trgc']``.
     indices : tuple of tuple of array
         Two tuples of arrays with indices of connections for which to compute
         connectivity.
@@ -1307,8 +1437,7 @@ def multivariate_spectral_connectivity_epochs(
 
     The connectivity method(s) is specified using the "method" parameter. The
     following methods are supported. Multiple measures can be computed at once
-    by using a list/tuple, e.g., ``['mic', 'net_trgc']`` to compute MIC and
-    Net TRGC.
+    by using a list/tuple, e.g., ``['mic', 'trgc']`` to compute MIC and TRGC.
 
         'mic' : Maximised Imaginary Coherence :footcite:`EwaldEtAl2012`
             Here, topographies of the connectivity are also computed for each
@@ -1322,11 +1451,11 @@ def multivariate_spectral_connectivity_epochs(
         'net_gc' : Net Granger causality with connectivity as::
             [seeds -> targets] - [targets -> seeds]
 
-        'trgc' : Time-Reversed Granger causality with connectivity as::
-            [seeds -> targets] - time-reversed[seeds -> targets]
-
-        'net_trgc' : Net Time-Reversed Granger causality with connectivity
+        'gc_tr' : Granger causality on time-reversed signals with connectivity
         as::
+            time-reversed[seeds -> targets]
+
+        'trgc' : Time-Reversed Granger causality with connectivity as::
             ([seeds -> targets] - [targets -> seeds]) - 
             (time-reversed[seeds -> targets] - time-reversed[targets -> seeds])
 
@@ -1393,13 +1522,28 @@ def multivariate_spectral_connectivity_epochs(
     .. footbibliography::
     """
     connectivity_computation = _MVCSpectralEpochs(
-        data=data, indices=indices, names=names, method=method, sfreq=sfreq,
-        mode=mode, tmin=tmin, tmax=tmax, fmin=fmin, fmax=fmax, fskip=fskip,
-        faverage=faverage, cwt_freqs=cwt_freqs, mt_bandwidth=mt_bandwidth,
-        mt_adaptive=mt_adaptive, mt_low_bias=mt_low_bias,
-        cwt_n_cycles=cwt_n_cycles, n_components=n_components,
-        gc_n_lags=gc_n_lags, block_size=block_size, n_jobs=n_jobs,
-        verbose=verbose
+        data=data,
+        indices=indices,
+        names=names,
+        method=method,
+        sfreq=sfreq,
+        mode=mode,
+        tmin=tmin,
+        tmax=tmax,
+        fmin=fmin,
+        fmax=fmax,
+        fskip=fskip,
+        faverage=faverage,
+        cwt_freqs=cwt_freqs,
+        mt_bandwidth=mt_bandwidth,
+        mt_adaptive=mt_adaptive,
+        mt_low_bias=mt_low_bias,
+        cwt_n_cycles=cwt_n_cycles,
+        n_components=n_components,
+        gc_n_lags=gc_n_lags,
+        block_size=block_size,
+        n_jobs=n_jobs,
+        verbose=verbose,
     )
 
     connectivity_computation.compute_csd_and_connectivity()
