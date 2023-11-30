@@ -810,23 +810,35 @@ class _GCEst(_GCEstBase):
     name = "GC"
 
 
+class _GCTSEst(_GCEstBase):
+    """Granger causality ([targets -> seeds]) estimator."""
+
+    name = "GC (flipped)"
+
+
 class _NetGCEst(_GCEstBase):
     """Granger causality ([seeds -> targets] - [targets -> seeds]) estimator."""
 
     name = "Net GC"
 
 
-class _TRGCEst(_GCEstBase):
+class _GCTREst(_GCEstBase):
     """Granger causality (time-reversed[seeds -> targets]) estimator."""
 
-    name = "TRGC"
+    name = "GC (time-reversed)"
 
 
-class _NetTRGCEst(_GCEstBase):
+class _GCTRTSEst(_GCEstBase):
+    """Granger causality (time-reversed[targets -> seeds]) estimator."""
+
+    name = "GC (time-reversed; flipped)"
+
+
+class _TRGCEst(_GCEstBase):
     """Granger causality (([seeds -> targets] - [targets -> seeds]) -
     time-reversed([seeds -> targets] - targets -> seeds])) estimator."""
 
-    name = "Net TRGC"
+    name = "TRGC"
 
 
 class _PLVEst(_EpochMeanConEstBase):
