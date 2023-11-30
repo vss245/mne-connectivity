@@ -55,8 +55,15 @@ class _MVCSpectralEpochs:
         "verbose",
     ]
 
-    gc_method_aliases = ["gc", "net_gc", "gc_tr", "trgc"]
-    gc_method_names = ["GC", "Net GC", "GC (time-reversed)", "TRGC"]
+    gc_method_aliases = ["gc", "gc_ts", "net_gc", "gc_tr", "gc_tr_ts", "trgc"]
+    gc_method_names = [
+        "GC",
+        "GC (flipped)",
+        "Net GC",
+        "GC (time-reversed)",
+        "GC (time-reversed; flipped)",
+        "TRGC",
+    ]
 
     # possible forms of GC with information on how to use the methods
     possible_gc_forms = {
@@ -69,7 +76,7 @@ class _MVCSpectralEpochs:
         "targets -> seeds": dict(
             flip_seeds_targets=True,
             reverse_time=False,
-            for_methods=["Net GC", "TRGC"],
+            for_methods=["GC (flipped)", "Net GC", "TRGC"],
             method_class=None,
         ),
         "time-reversed[seeds -> targets]": dict(
@@ -81,7 +88,7 @@ class _MVCSpectralEpochs:
         "time-reversed[targets -> seeds]": dict(
             flip_seeds_targets=True,
             reverse_time=True,
-            for_methods=["TRGC"],
+            for_methods=["GC (time-reversed; flipped)", "TRGC"],
             method_class=None,
         ),
     }
@@ -926,6 +933,8 @@ class _MVCSpectralEpochs:
         for method_i, method in enumerate(con_methods):
             if method.name == "GC":
                 con[method_i] = gc_scores["seeds -> targets"]
+            if method.name == "GC (flipped)":
+                con[method_i] = gc_scores["targets -> seeds"]
             elif method.name == "Net GC":
                 con[method_i] = (
                     gc_scores["seeds -> targets"]
@@ -933,6 +942,8 @@ class _MVCSpectralEpochs:
                 )
             elif method.name == "GC (time-reversed)":
                 con[method_i] = gc_scores["time-reversed[seeds -> targets]"]
+            elif method.name == "GC (time-reversed; flipped)":
+                con[method_i] = gc_scores["time-reversed[targets -> seeds]"]
             elif method.name == "TRGC":
                 con[method_i] = (
                     gc_scores["seeds -> targets"]
@@ -1152,7 +1163,14 @@ class _MVCSpectralEpochs:
                 events=self.events,
                 event_id=self.event_id,
             )
-            if _method in ["gc", "net_gc", "gc_tr", "trgc"]:
+            if _method in [
+                "gc",
+                "gc_ts",
+                "net_gc",
+                "gc_tr",
+                "gc_tr_ts",
+                "trgc",
+            ]:
                 kwargs.update(n_lags=self.gc_n_lags)
             # create the connectivity container
             if self.mode in ["multitaper", "fourier"]:
@@ -1218,7 +1236,7 @@ def multivariate_spectral_connectivity_epochs(
 
     method : str | list of str; default "mic"
     -   Connectivity measure(s) to compute. These can be ['mic', 'mim', 'gc',
-        'net_gc', 'trgc', 'net_trgc'].
+        'gc_ts', 'net_gc', 'gc_tr', 'gc_tr_ts', 'trgc'].
 
     sfreq : float; default 2 * pi
     -   Sampling frequency of the data. Only used if "data" is array-like.
@@ -1328,7 +1346,7 @@ def multivariate_spectral_connectivity_epochs(
     %(names)s
     method : str | list of str
         Connectivity measure(s) to compute. These can be ``['mic', 'mim', 'gc',
-        'net_gc', 'gc_tr', 'trgc']``.
+        'gc_ts', 'net_gc', 'gc_tr', 'gc_tr_ts', 'trgc']``.
     indices : tuple of tuple of array
         Two tuples of arrays with indices of connections for which to compute
         connectivity.
@@ -1448,12 +1466,19 @@ def multivariate_spectral_connectivity_epochs(
         'gc' : Granger causality :footcite:SETHPAPER with connectivity as::
             [seeds -> targets]
 
+        'gc_ts' : Granger causality :footcite:SETHPAPER with connectivity as::
+            [targets -> seeds]
+
         'net_gc' : Net Granger causality with connectivity as::
             [seeds -> targets] - [targets -> seeds]
 
         'gc_tr' : Granger causality on time-reversed signals with connectivity
         as::
             time-reversed[seeds -> targets]
+
+        'gc_tr_ts' : Granger causality on time-reversed signals with
+        connectivity as::
+            time-reversed[targets -> seeds]
 
         'trgc' : Time-Reversed Granger causality with connectivity as::
             ([seeds -> targets] - [targets -> seeds]) - 
